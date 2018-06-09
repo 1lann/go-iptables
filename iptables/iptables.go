@@ -56,6 +56,26 @@ const (
 	ProtocolIPv6
 )
 
+// Built-in tables and chains
+const (
+	TableNAT    = "nat"
+	TableFilter = "filter"
+	TableMangle = "mangle"
+
+	ChainPostrouting = "POSTROUTING"
+	ChainPrerouting  = "PREROUTING"
+	ChainOutput      = "OUTPUT"
+	ChainInput       = "INPUT"
+	ChainForward     = "FORWARD"
+	ChainDNAT        = "DNAT"
+	ChainReturn      = "RETURN"
+
+	TargetAccept = "ACCEPT"
+	TargetReject = "REJECT"
+	TargetDrop   = "DROP"
+	TargetReturn = "RETURN"
+)
+
 type IPTables struct {
 	path     string
 	proto    Protocol
@@ -123,6 +143,26 @@ func (ipt *IPTables) Insert(table, chain string, pos int, rulespec ...string) er
 func (ipt *IPTables) Append(table, chain string, rulespec ...string) error {
 	cmd := append([]string{"-t", table, "-A", chain}, rulespec...)
 	return ipt.run(cmd...)
+}
+
+// Prepend prepends rulespec, it is identitcal to
+//     ipt.Insert(table, chain, 0, rulespec...)
+func (ipt *IPTables) Prepend(table, chain string, rulespec ...string) error {
+	return ipt.Insert(table, chain, 0, rulespec...)
+}
+
+// PrependUnique acts like Prepend except that it won't add a duplicate
+func (ipt *IPTables) PrependUnique(table, chain string, rulespec ...string) error {
+	exists, err := ipt.Exists(table, chain, rulespec...)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return ipt.Prepend(table, chain, rulespec...)
+	}
+
+	return nil
 }
 
 // AppendUnique acts like Append except that it won't add a duplicate
@@ -266,6 +306,15 @@ func (ipt *IPTables) executeList(args []string) ([]string, error) {
 // If the chain already exists, it will result in an error.
 func (ipt *IPTables) NewChain(table, chain string) error {
 	return ipt.run("-t", table, "-N", chain)
+}
+
+// EnsureChain ensures the existence of an empty chain.
+func (ipt *IPTables) EnsureChain(table, chain string) error {
+	if err := ipt.ClearChain(table, chain); err == nil {
+		return nil
+	}
+
+	return ipt.NewChain(table, chain)
 }
 
 // ClearChain flushed (deletes all rules) in the specified table/chain.
